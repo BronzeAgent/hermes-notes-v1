@@ -16,6 +16,7 @@ export function NoteEditor({ note, onSave, onExport, onDelete }: Props) {
   const [title, setTitle] = useState("");
   const editorContainerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
+  const viewCreatedRef = useRef(false);
   const currentNoteIdRef = useRef<string | null>(null);
   const titleRef = useRef(title);
 
@@ -29,12 +30,14 @@ export function NoteEditor({ note, onSave, onExport, onDelete }: Props) {
     setTitle(note?.title ?? "");
   }, [note?.id]);
 
-  // Create CodeMirror on mount
+  // Create CodeMirror view when the editor container first enters the DOM
+  // (when note transitions from null → non-null). viewCreatedRef prevents
+  // recreation on subsequent note switches.
   useEffect(() => {
-    if (!editorContainerRef.current) return;
+    if (!note || !editorContainerRef.current || viewCreatedRef.current) return;
 
     const view = new EditorView({
-      doc: note?.content ?? "",
+      doc: note.content,
       extensions: [
         lineNumbers(),
         markdown({ base: markdownLanguage }),
@@ -60,14 +63,16 @@ export function NoteEditor({ note, onSave, onExport, onDelete }: Props) {
     });
 
     viewRef.current = view;
-    currentNoteIdRef.current = note?.id ?? null;
+    currentNoteIdRef.current = note.id;
+    viewCreatedRef.current = true;
 
     return () => {
       view.destroy();
       viewRef.current = null;
+      viewCreatedRef.current = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [note?.id]);
 
   // Sync editor content when a different note is selected
   useEffect(() => {
@@ -97,6 +102,17 @@ export function NoteEditor({ note, onSave, onExport, onDelete }: Props) {
     [note, onSave],
   );
 
+  // Tab or Enter from title → focus the editor body
+  const handleTitleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === "Enter" || (e.key === "Tab" && !e.shiftKey)) {
+        e.preventDefault();
+        viewRef.current?.focus();
+      }
+    },
+    [],
+  );
+
   // Empty state
   if (!note) {
     return (
@@ -114,6 +130,7 @@ export function NoteEditor({ note, onSave, onExport, onDelete }: Props) {
           type="text"
           value={title}
           onChange={(e) => handleTitleChange(e.target.value)}
+          onKeyDown={handleTitleKeyDown}
           placeholder="Note title..."
           className="flex-1 text-xl font-semibold bg-transparent border-none outline-none text-gray-900 dark:text-gray-200 placeholder-gray-300 dark:placeholder-gray-600"
         />
@@ -132,7 +149,7 @@ export function NoteEditor({ note, onSave, onExport, onDelete }: Props) {
       </div>
 
       {/* CodeMirror editor */}
-      <div ref={editorContainerRef} className="flex-1 overflow-hidden" />
+      <div ref={editorContainerRef} className="flex-1 overflow-hidden min-h-0" />
     </main>
   );
 }
