@@ -1,4 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { EditorView, keymap } from "@codemirror/view";
+import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
+import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
+import { livePreview } from "./LivePreviewPlugin";
 import type { Note } from "shared/rpc";
 
 type Props = {
@@ -10,23 +14,103 @@ type Props = {
 
 export function NoteEditor({ note, onSave, onExport, onDelete }: Props) {
   const [title, setTitle] = useState("");
-  const [content, setContent] = useState("");
+  const editorContainerRef = useRef<HTMLDivElement>(null);
+  const viewRef = useRef<EditorView | null>(null);
+  const viewCreatedRef = useRef(false);
+  const currentNoteIdRef = useRef<string | null>(null);
+  const titleRef = useRef(title);
 
-  // Sync local state when selected note changes
+  // Keep titleRef in sync so the CM update listener never reads stale title
+  useEffect(() => {
+    titleRef.current = title;
+  }, [title]);
+
+  // Sync title state when note changes
   useEffect(() => {
     setTitle(note?.title ?? "");
-    setContent(note?.content ?? "");
   }, [note?.id]);
 
-  const handleTitleChange = (value: string) => {
-    setTitle(value);
-    if (note) onSave(note.id, value, content);
-  };
+  // Create CodeMirror view when the editor container first enters the DOM
+  // (when note transitions from null → non-null). viewCreatedRef prevents
+  // recreation on subsequent note switches.
+  useEffect(() => {
+    if (!note || !editorContainerRef.current || viewCreatedRef.current) return;
 
-  const handleContentChange = (value: string) => {
-    setContent(value);
-    if (note) onSave(note.id, title, value);
-  };
+    const view = new EditorView({
+      doc: note.content,
+      extensions: [
+        markdown({ base: markdownLanguage }),
+        history(),
+        keymap.of([...defaultKeymap, ...historyKeymap]),
+        livePreview(),
+        EditorView.updateListener.of((update) => {
+          if (update.docChanged && currentNoteIdRef.current) {
+            onSave(
+              currentNoteIdRef.current,
+              titleRef.current,
+              update.view.state.doc.toString(),
+            );
+          }
+        }),
+        EditorView.theme({
+          "&": { height: "100%" },
+          ".cm-scroller": { overflow: "auto" },
+          ".cm-editor": { outline: "none" },
+        }),
+      ],
+      parent: editorContainerRef.current,
+    });
+
+    viewRef.current = view;
+    currentNoteIdRef.current = note.id;
+    viewCreatedRef.current = true;
+
+    return () => {
+      view.destroy();
+      viewRef.current = null;
+      viewCreatedRef.current = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [note?.id]);
+
+  // Sync editor content when a different note is selected
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view || !note) return;
+
+    if (currentNoteIdRef.current !== note.id) {
+      currentNoteIdRef.current = note.id;
+      view.dispatch({
+        changes: {
+          from: 0,
+          to: view.state.doc.length,
+          insert: note.content,
+        },
+      });
+    }
+  }, [note?.id, note?.content]);
+
+  // Title change — calls onSave immediately (hook debounces it)
+  const handleTitleChange = useCallback(
+    (value: string) => {
+      setTitle(value);
+      if (note) {
+        onSave(note.id, value, viewRef.current?.state.doc.toString() ?? "");
+      }
+    },
+    [note, onSave],
+  );
+
+  // Tab or Enter from title → focus the editor body
+  const handleTitleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === "Enter" || (e.key === "Tab" && !e.shiftKey)) {
+        e.preventDefault();
+        viewRef.current?.focus();
+      }
+    },
+    [],
+  );
 
   // Empty state
   if (!note) {
@@ -45,6 +129,7 @@ export function NoteEditor({ note, onSave, onExport, onDelete }: Props) {
           type="text"
           value={title}
           onChange={(e) => handleTitleChange(e.target.value)}
+          onKeyDown={handleTitleKeyDown}
           placeholder="Note title..."
           className="flex-1 text-xl font-semibold bg-transparent border-none outline-none text-gray-900 dark:text-gray-200 placeholder-gray-300 dark:placeholder-gray-600"
         />
@@ -62,13 +147,8 @@ export function NoteEditor({ note, onSave, onExport, onDelete }: Props) {
         </button>
       </div>
 
-      {/* Content */}
-      <textarea
-        value={content}
-        onChange={(e) => handleContentChange(e.target.value)}
-        placeholder="Start writing..."
-        className="flex-1 resize-none border-none outline-none px-5 py-4 text-base leading-relaxed bg-transparent text-gray-800 dark:text-gray-300 placeholder-gray-300 dark:placeholder-gray-600 font-[inherit]"
-      />
+      {/* CodeMirror editor */}
+      <div ref={editorContainerRef} className="flex-1 overflow-hidden min-h-0" />
     </main>
   );
 }

@@ -8,10 +8,58 @@
   }
 }
 
-/* Scrollbar styling */
+/* Sidebar scrollbar */
 .note-list::-webkit-scrollbar {
   width: 6px;
 }
 .note-list::-webkit-scrollbar-thumb {
   @apply bg-gray-300 dark:bg-gray-700 rounded-full;
+}
+
+/* --- CodeMirror theme --- */
+
+/* Base editor colors */
+.cm-editor {
+  @apply text-gray-800 dark:text-gray-300 bg-transparent;
+}
+.cm-editor .cm-content {
+  font-family: inherit;
+}
+
+/* Selection */
+.cm-editor .cm-selectionBackground,
+.cm-editor .cm-content ::selection {
+  @apply bg-blue-200 dark:bg-blue-900;
+}
+
+/* Cursor */
+.cm-editor .cm-cursor,
+.cm-editor .cm-dropCursor {
+  @apply border-l-blue-500;
+}
+
+/* Active line highlight */
+.cm-editor .cm-activeLine {
+  background-color: rgba(0, 0, 0, 0.03);
+}
+.dark .cm-editor .cm-activeLine {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+/* CM scrollbar */
+.cm-editor .cm-scroller::-webkit-scrollbar {
+  width: 6px;
+}
+.cm-editor .cm-scroller::-webkit-scrollbar-thumb {
+  @apply bg-gray-300 dark:bg-gray-700 rounded-full;
+}
+
+/* Task checkboxes */
+.cm-task-checkbox {
+  @apply cursor-pointer select-none text-lg inline-block align-middle mr-1 hover:opacity-70;
+}
+
+/* Completed task — strikethrough */
+.cm-task-done {
+  @apply line-through opacity-50;
 }
