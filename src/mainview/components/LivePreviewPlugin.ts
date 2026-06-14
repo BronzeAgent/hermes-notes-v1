@@ -1,4 +1,4 @@
-import { StateField, StateEffect, RangeSetBuilder } from "@codemirror/state";
+import { RangeSetBuilder } from "@codemirror/state";
 import {
   Decoration,
   DecorationSet,
@@ -7,20 +7,6 @@ import {
   ViewUpdate,
   WidgetType,
 } from "@codemirror/view";
-
-// --- Cursor-line tracking ---
-
-const setCursorLine = StateEffect.define<number>();
-
-const cursorLineField = StateField.define<number>({
-  create: () => 0,
-  update: (value, tr) => {
-    for (const e of tr.effects) {
-      if (e.is(setCursorLine)) return e.value;
-    }
-    return value;
-  },
-});
 
 // --- Inline-styled text widget (replaces markdown wrapper chars) ---
 
@@ -50,10 +36,14 @@ class StyledTextWidget extends WidgetType {
 
 // --- Decoration builder ---
 
+function getCursorLine(state: EditorView["state"]): number {
+  return state.doc.lineAt(state.selection.main.head).number;
+}
+
 function buildDecorations(view: EditorView): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
   const doc = view.state.doc;
-  const cursorLine = view.state.field(cursorLineField);
+  const cursorLine = getCursorLine(view.state);
 
   for (let i = 1; i <= doc.lines; i++) {
     const line = doc.line(i);
@@ -73,13 +63,13 @@ function buildDecorations(view: EditorView): DecorationSet {
         Decoration.replace({}),
       );
       // Style the header text
-      const fontSize = ["text-2xl", "text-xl", "text-lg", "text-base", "text-sm", "text-xs"][level - 1];
+      const sizes = ["text-2xl", "text-xl", "text-lg", "text-base", "text-sm", "text-xs"];
       builder.add(
         line.from + headerMatch[1].length + 1,
         line.to,
         Decoration.mark({
           attributes: {
-            class: `cm-header cm-header-${level} font-bold ${fontSize} mt-3 mb-1`,
+            class: `cm-header cm-header-${level} font-bold ${sizes[level - 1]}`,
           },
         }),
       );
@@ -91,12 +81,11 @@ function buildDecorations(view: EditorView): DecorationSet {
     if (ulMatch) {
       const indentLen = ulMatch[1].length;
       const bulletLen = ulMatch[2].length + 1; // "- " or "* "
-      // Replace the bullet prefix with nothing, show a bullet widget
       builder.add(
         line.from + indentLen,
         line.from + indentLen + bulletLen,
         Decoration.replace({
-          widget: new StyledTextWidget("•", "cm-list-bullet"),
+          widget: new StyledTextWidget("\u2022", "cm-list-bullet"),
         }),
       );
       continue;
@@ -127,7 +116,7 @@ function buildDecorations(view: EditorView): DecorationSet {
         line.from + (bqMatch[0].length - bqMatch[1].length),
         Decoration.replace({}),
       );
-      // Add blockquote styling to the whole line
+      // Add blockquote styling
       builder.add(
         line.from,
         line.to,
@@ -147,7 +136,6 @@ function buildDecorations(view: EditorView): DecorationSet {
     while ((codeMatch = codeRegex.exec(text)) !== null) {
       const start = line.from + codeMatch.index;
       const end = start + codeMatch[0].length;
-      // Replace the whole `code` with styled widget
       builder.add(
         start,
         end,
@@ -203,13 +191,6 @@ const livePreviewPlugin = ViewPlugin.fromClass(
 
     update(update: ViewUpdate) {
       if (update.docChanged || update.selectionSet || update.viewportChanged) {
-        // Update cursor line
-        const cursorLine = update.state.doc.lineAt(
-          update.state.selection.main.head,
-        ).number;
-        update.view.dispatch({
-          effects: setCursorLine.of(cursorLine),
-        });
         this.decorations = buildDecorations(update.view);
       }
     }
@@ -245,5 +226,5 @@ const baseTheme = EditorView.baseTheme({
 // --- Export ---
 
 export function livePreview() {
-  return [cursorLineField, livePreviewPlugin, baseTheme];
+  return [livePreviewPlugin, baseTheme];
 }
