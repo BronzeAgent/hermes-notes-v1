@@ -78,21 +78,13 @@ function buildDecorations(view: EditorView): DecorationSet {
     if (taskMatch) {
       const indentEnd = line.from + taskMatch[1].length;
       const markerStart = indentEnd;
-      const markerEnd = markerStart + 1;
-      const bracketStart = markerEnd + 1; // past the space after marker
-
-      // Hide the list marker
-      builder.add(
-        markerStart,
-        markerEnd,
-        Decoration.mark({ attributes: { class: "cm-md-syntax" } }),
-      );
+      const bracketStart = markerStart + 2; // past "- " / "* "
 
       const checked = taskMatch[3].toLowerCase() === "x";
 
-      // Widget replaces [ ] or [x]
+      // Widget replaces the entire "- [ ]" prefix
       builder.add(
-        bracketStart,
+        markerStart,
         bracketStart + 3,
         Decoration.widget({
           widget: new TaskCheckboxWidget(checked, () => {
