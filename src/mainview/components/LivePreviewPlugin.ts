@@ -7,33 +7,140 @@ import {
   ViewUpdate,
 } from "@codemirror/view";
 import { TaskCheckboxWidget } from "./TaskCheckboxWidget";
+import hljs from "highlight.js";
 
-// --- Decoration builder ---
+// --- Types ---
+
+type CodeBlock = {
+  openLine: number;
+  closeLine: number; // -1 if unclosed (no closing ``` yet)
+  language: string | null;
+};
+
+// --- Helpers ---
 
 function getCursorLine(state: EditorView["state"]): number {
   return state.doc.lineAt(state.selection.main.head).number;
 }
 
+/** Parse highlight.js HTML output into CodeMirror Decoration.mark() calls */
+function applySyntaxHighlighting(
+  text: string,
+  lineFrom: number,
+  language: string,
+  builder: RangeSetBuilder<Decoration>,
+) {
+  let result;
+  try {
+    result = hljs.highlight(text, { language, ignoreIllegals: true });
+  } catch {
+    return; // unsupported language — skip highlighting
+  }
+
+  const html: string = result.value;
+  const spanRegex = /<span class="([^"]+)">([^]*?)<\/span>/g;
+  let m: RegExpExecArray | null;
+  let plainPos = 0;
+
+  while ((m = spanRegex.exec(html)) !== null) {
+    const classes = m[1];
+    const content = m[2];
+    const idx = text.indexOf(content, plainPos);
+    if (idx === -1) continue;
+
+    const from = lineFrom + idx;
+    const to = from + content.length;
+
+    const cmClasses = classes
+      .split(" ")
+      .filter((c) => c.startsWith("hljs-"))
+      .map((c) => "cm-" + c)
+      .join(" ");
+
+    if (cmClasses) {
+      builder.add(
+        from,
+        to,
+        Decoration.mark({ attributes: { class: cmClasses } }),
+      );
+    }
+
+    plainPos = idx + content.length;
+  }
+}
+
+// --- Pass 1: Scan for code block boundaries ---
+
+function scanCodeBlocks(doc: EditorView["state"]["doc"]): CodeBlock[] {
+  const blocks: CodeBlock[] = [];
+  let i = 1;
+
+  while (i <= doc.lines) {
+    const text = doc.line(i).text;
+    const fenceMatch = text.match(/^```(\w*)/);
+
+    if (fenceMatch) {
+      const openLine = i;
+      const language = fenceMatch[1] || null;
+      let closeLine = -1;
+
+      // Scan forward for closing fence
+      for (let j = i + 1; j <= doc.lines; j++) {
+        if (/^```/.test(doc.line(j).text)) {
+          closeLine = j;
+          i = j + 1;
+          break;
+        }
+      }
+
+      if (closeLine === -1) {
+        i = doc.lines + 1; // no closing fence — stop scanning
+      }
+
+      blocks.push({ openLine, closeLine, language });
+    } else {
+      i++;
+    }
+  }
+
+  return blocks;
+}
+
+// --- Pass 2: Build decorations ---
+
 function buildDecorations(view: EditorView): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
   const doc = view.state.doc;
   const cursorLine = getCursorLine(view.state);
-  let inCodeBlock = false;
+
+  // Pass 1: find all code block boundaries
+  const codeBlocks = scanCodeBlocks(doc);
+
+  // Which block (if any) contains the cursor?
+  const cursorBlock =
+    codeBlocks.find((b) => {
+      if (b.closeLine === -1) return cursorLine >= b.openLine;
+      return cursorLine >= b.openLine && cursorLine <= b.closeLine;
+    }) ?? null;
 
   for (let i = 1; i <= doc.lines; i++) {
     const line = doc.line(i);
     const text = line.text;
 
     // --- Fenced code block boundary ---
-    const fenceMatch = text.match(/^```/);
-    if (fenceMatch) {
-      inCodeBlock = !inCodeBlock;
-      if (i !== cursorLine) {
-        builder.add(
-          line.from,
-          line.to,
-          Decoration.mark({ attributes: { class: "cm-md-syntax" } }),
-        );
+    const block = codeBlocks.find(
+      (b) => b.openLine === i || b.closeLine === i,
+    );
+
+    if (block) {
+      // This line IS a fence — hide it unless cursor is in this block
+      const showRaw =
+        cursorBlock !== null &&
+        cursorBlock.openLine === block.openLine &&
+        cursorBlock.closeLine === block.closeLine;
+
+      if (!showRaw && i !== cursorLine) {
+        builder.add(line.from, line.to, Decoration.replace({}));
       }
       continue;
     }
@@ -41,13 +148,35 @@ function buildDecorations(view: EditorView): DecorationSet {
     // Skip the cursor line — show raw markdown there
     if (i === cursorLine) continue;
 
-    // --- Inside code block: monospace, dimmed, no other decorations ---
-    if (inCodeBlock) {
-      builder.add(
-        line.from,
-        line.to,
-        Decoration.mark({ attributes: { class: "cm-code-block" } }),
-      );
+    // --- Inside code block: styled box + syntax highlighting ---
+    const parentBlock = codeBlocks.find(
+      (b) =>
+        i > b.openLine && (b.closeLine === -1 || i < b.closeLine),
+    );
+
+    if (parentBlock) {
+      // Cursor in this block → show raw (skip all decorations for these lines)
+      const cursorHere =
+        cursorBlock !== null &&
+        cursorBlock.openLine === parentBlock.openLine &&
+        cursorBlock.closeLine === parentBlock.closeLine;
+
+      if (!cursorHere) {
+        builder.add(
+          line.from,
+          line.to,
+          Decoration.line({ attributes: { class: "cm-code-block" } }),
+        );
+
+        if (parentBlock.language) {
+          applySyntaxHighlighting(
+            text,
+            line.from,
+            parentBlock.language,
+            builder,
+          );
+        }
+      }
       continue;
     }
 
@@ -251,7 +380,8 @@ const livePreviewPlugin = ViewPlugin.fromClass(
     }
   },
   {
-    decorations: (v: { decorations: DecorationSet }): DecorationSet => v.decorations,
+    decorations: (v: { decorations: DecorationSet }): DecorationSet =>
+      v.decorations,
   },
 );
 
@@ -266,15 +396,6 @@ const baseTheme = EditorView.baseTheme({
   },
   ".cm-bold-delim, .cm-italic-delim": {
     fontSize: "0.85em",
-  },
-  // Code block content
-  ".cm-code-block": {
-    backgroundColor: "#f3f4f6",
-    fontFamily: "monospace",
-    fontSize: "0.9em",
-  },
-  ".dark .cm-code-block": {
-    backgroundColor: "#1f2937",
   },
   // Headers — prefix completely hidden and collapsed
   ".cm-heading-prefix": {
