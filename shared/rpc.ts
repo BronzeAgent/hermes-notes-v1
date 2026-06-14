@@ -20,7 +20,7 @@ export type NotesRPC = {
       };
       saveNote: {
         params: { id?: string; title: string; content: string };
-        response: { success: boolean; note: Note };
+        response: { success: boolean; note: Note; previousId?: string };
       };
       deleteNote: {
         params: { id: string };

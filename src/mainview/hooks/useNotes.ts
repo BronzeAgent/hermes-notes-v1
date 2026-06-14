@@ -48,9 +48,18 @@ export function useNotes() {
       saveTimer.current = null;
       const result = await electrobun.rpc!.request.saveNote({ id, title, content });
       if (result.success) {
-        setNotes((prev) =>
-          prev.map((n) => (n.id === id ? result.note : n))
-        );
+        setNotes((prev) => {
+          // If title changed, the id changed — remove old, add new
+          if (result.previousId) {
+            const filtered = prev.filter((n) => n.id !== result.previousId);
+            return [result.note, ...filtered];
+          }
+          return prev.map((n) => (n.id === id ? result.note : n));
+        });
+        // Update selection if id changed
+        if (result.previousId) {
+          setSelectedId(result.note.id);
+        }
       }
     }, 500);
   }, []);

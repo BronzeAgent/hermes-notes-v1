@@ -1,6 +1,15 @@
 import { BrowserView, BrowserWindow, Updater, Utils } from "electrobun/bun";
 import { join } from "path";
-import { mkdirSync, existsSync, readdirSync, unlinkSync } from "fs";
+import {
+  mkdirSync,
+  existsSync,
+  readdirSync,
+  unlinkSync,
+  readFileSync,
+  renameSync,
+  statSync,
+  copyFileSync,
+} from "fs";
 import type { Note, NotesRPC } from "../../shared/rpc";
 
 const DEV_SERVER_PORT = 5173;
@@ -12,34 +21,62 @@ if (!existsSync(notesDir)) {
   mkdirSync(notesDir, { recursive: true });
 }
 
-function generateId(): string {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+function sanitizeFilename(name: string): string {
+  return name.replace(/\//g, "-").trim() || "Untitled";
 }
 
-function getNotePath(id: string): string {
-  return join(notesDir, `${id}.json`);
+function getNotePath(title: string): string {
+  return join(notesDir, `${sanitizeFilename(title)}.md`);
 }
 
-function loadNote(id: string): Note | null {
-  const path = getNotePath(id);
+function fileToNote(file: string): Note | null {
+  const path = join(notesDir, file);
   if (!existsSync(path)) return null;
   try {
-    const text = require("fs").readFileSync(path, "utf-8");
-    return JSON.parse(text) as Note;
+    const content = readFileSync(path, "utf-8");
+    const title = file.replace(/\.md$/, "");
+    const mtime = statSync(path).mtime;
+    return {
+      id: title,
+      title,
+      content,
+      updatedAt: mtime.toISOString(),
+    };
   } catch {
     return null;
   }
 }
 
 function loadAllNotes(): Note[] {
-  const files = readdirSync(notesDir).filter((f) => f.endsWith(".json"));
+  const files = readdirSync(notesDir).filter((f) => f.endsWith(".md"));
   const notes: Note[] = [];
   for (const file of files) {
-    const note = loadNote(file.replace(".json", ""));
+    const note = fileToNote(file);
     if (note) notes.push(note);
   }
   return notes.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
+
+// --- Migration: convert existing .json notes to plain .md ---
+function migrateJsonNotes() {
+  const jsonFiles = readdirSync(notesDir).filter((f) => f.endsWith(".json"));
+  for (const file of jsonFiles) {
+    try {
+      const raw = readFileSync(join(notesDir, file), "utf-8");
+      const note = JSON.parse(raw) as Note;
+      const mdPath = getNotePath(note.title);
+      if (!existsSync(mdPath)) {
+        Bun.write(mdPath, note.content);
+        console.log(`Migrated: ${file} → ${sanitizeFilename(note.title)}.md`);
+      }
+      unlinkSync(join(notesDir, file));
+    } catch (err) {
+      console.error(`Failed to migrate ${file}:`, err);
+    }
+  }
+}
+
+migrateJsonNotes();
 
 // --- RPC Handlers ---
 const notesRPC = BrowserView.defineRPC<NotesRPC>({
@@ -47,18 +84,64 @@ const notesRPC = BrowserView.defineRPC<NotesRPC>({
   handlers: {
     requests: {
       getNotes: () => loadAllNotes(),
-      getNote: ({ id }) => loadNote(id),
+
+      getNote: ({ id }) => fileToNote(`${id}.md`),
+
       saveNote: async ({ id, title, content }) => {
-        const noteId = id || generateId();
-        const note: Note = {
-          id: noteId,
-          title: title || "Untitled",
-          content,
-          updatedAt: new Date().toISOString(),
+        const safeTitle = sanitizeFilename(title);
+        const previousId = id || undefined;
+
+        // New note
+        if (!id) {
+          // Handle collision: Untitled.md → Untitled (1).md
+          let finalTitle = safeTitle;
+          let counter = 1;
+          while (existsSync(getNotePath(finalTitle))) {
+            finalTitle = `${safeTitle} (${counter})`;
+            counter++;
+          }
+          await Bun.write(getNotePath(finalTitle), content);
+          const note = fileToNote(`${finalTitle}.md`)!;
+          return { success: true, note };
+        }
+
+        // Existing note — title changed? Rename.
+        const oldPath = getNotePath(id);
+        if (safeTitle !== sanitizeFilename(id)) {
+          let newPath = getNotePath(safeTitle);
+          // Collision — append counter if target exists (and isn't the same file)
+          if (existsSync(newPath) && newPath !== oldPath) {
+            let counter = 1;
+            let finalTitle = safeTitle;
+            while (existsSync(getNotePath(finalTitle))) {
+              finalTitle = `${safeTitle} (${counter})`;
+              counter++;
+            }
+            newPath = getNotePath(finalTitle);
+          }
+          if (existsSync(oldPath)) {
+            renameSync(oldPath, newPath);
+          }
+        }
+
+        // Write content
+        const finalPath = existsSync(getNotePath(safeTitle))
+          ? getNotePath(safeTitle)
+          : oldPath;
+        const noteTitle = finalPath
+          .split("/")
+          .pop()!
+          .replace(/\.md$/, "");
+
+        await Bun.write(finalPath, content);
+        const note = fileToNote(`${noteTitle}.md`)!;
+        return {
+          success: true,
+          note,
+          previousId: previousId !== note.id ? previousId : undefined,
         };
-        await Bun.write(getNotePath(noteId), JSON.stringify(note, null, 2));
-        return { success: true, note };
       },
+
       deleteNote: ({ id }) => {
         const path = getNotePath(id);
         if (existsSync(path)) {
@@ -67,9 +150,10 @@ const notesRPC = BrowserView.defineRPC<NotesRPC>({
         }
         return { success: false };
       },
+
       exportNote: async ({ id }) => {
-        const note = loadNote(id);
-        if (!note) return { success: false };
+        const path = getNotePath(id);
+        if (!existsSync(path)) return { success: false };
         const chosenPaths = await Utils.openFileDialog({
           startingFolder: Bun.env["HOME"] || "/",
           canChooseFiles: false,
@@ -77,8 +161,8 @@ const notesRPC = BrowserView.defineRPC<NotesRPC>({
           allowsMultipleSelection: false,
         });
         if (chosenPaths[0] && chosenPaths[0] !== "") {
-          const exportPath = join(chosenPaths[0], `${note.title}.txt`);
-          await Bun.write(exportPath, note.content);
+          const exportPath = join(chosenPaths[0], `${id}.md`);
+          copyFileSync(path, exportPath);
           return { success: true, path: exportPath };
         }
         return { success: false };
