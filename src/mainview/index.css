@@ -63,3 +63,35 @@
 .cm-task-done {
   @apply line-through opacity-50;
 }
+
+/* Code block — distinct editing surface */
+.cm-code-block {
+  @apply bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-300 font-mono text-sm;
+}
+
+/* Language badge on opening fence */
+.cm-code-block-badge {
+  @apply text-xs text-gray-400 dark:text-gray-500 font-mono px-1 select-none;
+}
+
+/* Syntax highlighting tokens */
+.cm-hljs-keyword     { @apply text-red-600 dark:text-red-400; }
+.cm-hljs-string      { @apply text-blue-700 dark:text-blue-300; }
+.cm-hljs-comment     { @apply text-gray-500 dark:text-gray-400 italic; }
+.cm-hljs-function    { @apply text-purple-600 dark:text-purple-400; }
+.cm-hljs-number      { @apply text-blue-600 dark:text-blue-400; }
+.cm-hljs-operator    { @apply text-red-600 dark:text-red-400; }
+.cm-hljs-punctuation { @apply text-gray-900 dark:text-gray-200; }
+.cm-hljs-property    { @apply text-blue-600 dark:text-blue-400; }
+.cm-hljs-regexp      { @apply text-blue-700 dark:text-blue-300; }
+.cm-hljs-title       { @apply text-purple-600 dark:text-purple-400; }
+.cm-hljs-type        { @apply text-red-600 dark:text-red-400; }
+.cm-hljs-variable    { @apply text-orange-600 dark:text-orange-400; }
+.cm-hljs-params      { @apply text-gray-900 dark:text-gray-200; }
+.cm-hljs-meta        { @apply text-gray-500 dark:text-gray-400; }
+.cm-hljs-built_in    { @apply text-blue-600 dark:text-blue-400; }
+.cm-hljs-literal     { @apply text-blue-600 dark:text-blue-400; }
+.cm-hljs-selector    { @apply text-red-600 dark:text-red-400; }
+.cm-hljs-tag         { @apply text-green-600 dark:text-green-400; }
+.cm-hljs-name        { @apply text-green-600 dark:text-green-400; }
+.cm-hljs-attr        { @apply text-purple-600 dark:text-purple-400; }
