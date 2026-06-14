@@ -7,6 +7,7 @@ import {
   ViewUpdate,
 } from "@codemirror/view";
 import { TaskCheckboxWidget } from "./TaskCheckboxWidget";
+import { CodeBlockBadge } from "./CodeBlockBadge";
 import hljs from "highlight.js";
 
 // --- Types ---
@@ -15,6 +16,7 @@ type CodeBlock = {
   openLine: number;
   closeLine: number; // -1 if unclosed (no closing ``` yet)
   language: string | null;
+  openFenceLen: number; // length of the opening fence text (e.g. "```js" = 5)
 };
 
 // --- Helpers ---
@@ -81,23 +83,32 @@ function scanCodeBlocks(doc: EditorView["state"]["doc"]): CodeBlock[] {
 
     if (fenceMatch) {
       const openLine = i;
+      const openFenceLen = fenceMatch[0].length;
       const language = fenceMatch[1] || null;
       let closeLine = -1;
 
-      // Scan forward for closing fence
-      for (let j = i + 1; j <= doc.lines; j++) {
-        if (/^```/.test(doc.line(j).text)) {
-          closeLine = j;
-          i = j + 1;
-          break;
+      // Check for closing ``` on the SAME line (single-line block)
+      const afterOpen = text.slice(openFenceLen);
+      const sameLineCloseIdx = afterOpen.indexOf("```");
+      if (sameLineCloseIdx !== -1) {
+        closeLine = i;
+        i = i + 1;
+      } else {
+        // Scan forward for closing fence on subsequent lines
+        for (let j = i + 1; j <= doc.lines; j++) {
+          if (/^```/.test(doc.line(j).text)) {
+            closeLine = j;
+            i = j + 1;
+            break;
+          }
+        }
+
+        if (closeLine === -1) {
+          i = doc.lines + 1; // no closing fence — stop scanning
         }
       }
 
-      if (closeLine === -1) {
-        i = doc.lines + 1; // no closing fence — stop scanning
-      }
-
-      blocks.push({ openLine, closeLine, language });
+      blocks.push({ openLine, closeLine, language, openFenceLen });
     } else {
       i++;
     }
@@ -133,15 +144,74 @@ function buildDecorations(view: EditorView): DecorationSet {
     );
 
     if (block) {
-      // This line IS a fence — hide it unless cursor is in this block
-      const showRaw =
+      // Cursor is in this block → show raw fences + content
+      const cursorHere =
         cursorBlock !== null &&
         cursorBlock.openLine === block.openLine &&
         cursorBlock.closeLine === block.closeLine;
 
-      if (!showRaw && i !== cursorLine) {
+      if (cursorHere || i === cursorLine) {
+        continue; // show raw markdown
+      }
+
+      if (block.openLine === block.closeLine) {
+        // --- Single-line block: ```code``` all on one line ---
+        const openLen = block.openFenceLen;
+        const closeIdx = text.indexOf("```", openLen);
+
+        if (closeIdx !== -1) {
+          // Hide opening ```, show badge
+          builder.add(
+            line.from,
+            line.from + openLen,
+            Decoration.widget({
+              widget: new CodeBlockBadge(block.language),
+              side: 1,
+            }),
+          );
+
+          // Hide closing ``` and trailing whitespace
+          builder.add(
+            line.from + closeIdx,
+            line.to,
+            Decoration.replace({}),
+          );
+
+          // Content between fences — code block styling
+          const contentFrom = line.from + openLen;
+          const contentTo = line.from + closeIdx;
+          if (contentTo > contentFrom) {
+            builder.add(
+              contentFrom,
+              contentTo,
+              Decoration.line({ attributes: { class: "cm-code-block" } }),
+            );
+
+            if (block.language) {
+              applySyntaxHighlighting(
+                text.slice(openLen, closeIdx),
+                contentFrom,
+                block.language,
+                builder,
+              );
+            }
+          }
+        }
+      } else if (block.openLine === i) {
+        // --- Opening fence (multi-line) — show language badge ---
+        builder.add(
+          line.from,
+          line.to,
+          Decoration.widget({
+            widget: new CodeBlockBadge(block.language),
+            side: 1,
+          }),
+        );
+      } else {
+        // --- Closing fence (multi-line) — hide entirely ---
         builder.add(line.from, line.to, Decoration.replace({}));
       }
+
       continue;
     }
 
