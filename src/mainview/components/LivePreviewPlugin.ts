@@ -144,15 +144,8 @@ function buildDecorations(view: EditorView): DecorationSet {
     );
 
     if (block) {
-      // Cursor is in this block → show raw fences + content
-      const cursorHere =
-        cursorBlock !== null &&
-        cursorBlock.openLine === block.openLine &&
-        cursorBlock.closeLine === block.closeLine;
-
-      if (cursorHere || i === cursorLine) {
-        continue; // show raw markdown
-      }
+      // Only show raw if the cursor is ON this exact fence line
+      if (i === cursorLine) continue;
 
       if (block.openLine === block.closeLine) {
         // --- Single-line block: ```code``` all on one line ---
@@ -225,27 +218,20 @@ function buildDecorations(view: EditorView): DecorationSet {
     );
 
     if (parentBlock) {
-      // Cursor in this block → show raw (skip all decorations for these lines)
-      const cursorHere =
-        cursorBlock !== null &&
-        cursorBlock.openLine === parentBlock.openLine &&
-        cursorBlock.closeLine === parentBlock.closeLine;
+      // Cursor line already skipped above — decorate all other lines
+      builder.add(
+        line.from,
+        line.to,
+        Decoration.line({ attributes: { class: "cm-code-block" } }),
+      );
 
-      if (!cursorHere) {
-        builder.add(
+      if (parentBlock.language) {
+        applySyntaxHighlighting(
+          text,
           line.from,
-          line.to,
-          Decoration.line({ attributes: { class: "cm-code-block" } }),
+          parentBlock.language,
+          builder,
         );
-
-        if (parentBlock.language) {
-          applySyntaxHighlighting(
-            text,
-            line.from,
-            parentBlock.language,
-            builder,
-          );
-        }
       }
       continue;
     }
