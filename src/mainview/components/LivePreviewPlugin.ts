@@ -6,6 +6,7 @@ import {
   ViewPlugin,
   ViewUpdate,
 } from "@codemirror/view";
+import { TaskCheckboxWidget } from "./TaskCheckboxWidget";
 
 // --- Decoration builder ---
 
@@ -69,6 +70,53 @@ function buildDecorations(view: EditorView): DecorationSet {
           },
         }),
       );
+      continue;
+    }
+
+    // --- Task list: - [ ] or - [x] ---
+    const taskMatch = text.match(/^(\s*)([-*+])\s+\[([ xX])\]\s+(.*)/);
+    if (taskMatch) {
+      const indentEnd = line.from + taskMatch[1].length;
+      const markerStart = indentEnd;
+      const markerEnd = markerStart + 1;
+      const bracketStart = markerEnd + 1; // past the space after marker
+
+      // Hide the list marker
+      builder.add(
+        markerStart,
+        markerEnd,
+        Decoration.mark({ attributes: { class: "cm-md-syntax" } }),
+      );
+
+      const checked = taskMatch[3].toLowerCase() === "x";
+
+      // Widget replaces [ ] or [x]
+      builder.add(
+        bracketStart,
+        bracketStart + 3,
+        Decoration.widget({
+          widget: new TaskCheckboxWidget(checked, () => {
+            const checkPos = bracketStart + 1; // char inside brackets
+            view.dispatch({
+              changes: {
+                from: checkPos,
+                to: checkPos + 1,
+                insert: checked ? " " : "x",
+              },
+            });
+          }),
+        }),
+      );
+
+      // Strikethrough for completed tasks
+      if (checked) {
+        builder.add(
+          bracketStart + 3,
+          line.to,
+          Decoration.mark({ attributes: { class: "cm-task-done" } }),
+        );
+      }
+
       continue;
     }
 

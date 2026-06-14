@@ -53,3 +53,22 @@
 .cm-editor .cm-scroller::-webkit-scrollbar-thumb {
   @apply bg-gray-300 dark:bg-gray-700 rounded-full;
 }
+
+/* Task checkboxes */
+.cm-task-checkbox {
+  cursor: pointer;
+  user-select: none;
+  font-size: 1.1em;
+  margin-right: 2px;
+  display: inline-block;
+  vertical-align: middle;
+}
+.cm-task-checkbox:hover {
+  opacity: 0.7;
+}
+
+/* Completed task — strikethrough */
+.cm-task-done {
+  text-decoration: line-through;
+  opacity: 0.5;
+}
