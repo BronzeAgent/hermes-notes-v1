@@ -57,7 +57,7 @@ function buildDecorations(view: EditorView): DecorationSet {
       builder.add(
         line.from,
         line.from + hashLen + 1,
-        Decoration.mark({ attributes: { class: "cm-md-syntax" } }),
+        Decoration.mark({ attributes: { class: "cm-heading-prefix" } }),
       );
       const sizes = ["cm-h1", "cm-h2", "cm-h3", "cm-h4", "cm-h5", "cm-h6"];
       builder.add(
@@ -236,7 +236,15 @@ const baseTheme = EditorView.baseTheme({
   ".dark .cm-code-block": {
     backgroundColor: "#1f2937",
   },
-  // Headers
+  // Headers — prefix completely hidden and collapsed
+  ".cm-heading-prefix": {
+    opacity: "0",
+    width: "0",
+    display: "inline-block",
+    overflow: "hidden",
+    whiteSpace: "nowrap",
+    verticalAlign: "bottom",
+  },
   ".cm-h1": { fontSize: "1.5rem" },
   ".cm-h2": { fontSize: "1.25rem" },
   ".cm-h3": { fontSize: "1.125rem" },
