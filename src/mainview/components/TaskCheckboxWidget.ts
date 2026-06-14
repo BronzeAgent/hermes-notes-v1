@@ -18,7 +18,8 @@ export class TaskCheckboxWidget extends WidgetType {
 
   toDOM(): HTMLElement {
     const span = document.createElement("span");
-    span.className = "cm-task-checkbox";
+    span.className =
+      "cursor-pointer select-none text-lg inline-block align-middle mr-1 hover:opacity-70";
     span.textContent = this.checked ? "\u2611" : "\u2610"; // ☑ or ☐
     span.setAttribute("aria-checked", String(this.checked));
     span.setAttribute("role", "checkbox");
