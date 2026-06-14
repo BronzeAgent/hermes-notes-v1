@@ -46,19 +46,6 @@
   background-color: rgba(255, 255, 255, 0.05);
 }
 
-/* Gutter (line numbers) */
-.cm-editor .cm-gutters {
-  @apply bg-gray-50 dark:bg-gray-900 text-gray-400 dark:text-gray-600;
-  border-right: 1px solid #e5e7eb;
-  font-size: 0.85em;
-}
-.dark .cm-editor .cm-gutters {
-  border-right-color: #1f2937;
-}
-.cm-editor .cm-activeLineGutter {
-  @apply bg-gray-100 dark:bg-gray-800/50;
-}
-
 /* CM scrollbar */
 .cm-editor .cm-scroller::-webkit-scrollbar {
   width: 6px;

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { EditorView, keymap, lineNumbers } from "@codemirror/view";
+import { EditorView, keymap } from "@codemirror/view";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { livePreview } from "./LivePreviewPlugin";
@@ -39,7 +39,6 @@ export function NoteEditor({ note, onSave, onExport, onDelete }: Props) {
     const view = new EditorView({
       doc: note.content,
       extensions: [
-        lineNumbers(),
         markdown({ base: markdownLanguage }),
         history(),
         keymap.of([...defaultKeymap, ...historyKeymap]),
