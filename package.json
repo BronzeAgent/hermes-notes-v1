@@ -11,7 +11,6 @@
 	},
 	"dependencies": {
 		"electrobun": "1.18.1",
-		"gray-matter": "^4.0.3",
 		"react": "^18.3.1",
 		"react-dom": "^18.3.1"
 	},
