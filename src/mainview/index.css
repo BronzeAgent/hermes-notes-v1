@@ -8,10 +8,61 @@
   }
 }
 
-/* Scrollbar styling */
+/* Sidebar scrollbar */
 .note-list::-webkit-scrollbar {
   width: 6px;
 }
 .note-list::-webkit-scrollbar-thumb {
+  @apply bg-gray-300 dark:bg-gray-700 rounded-full;
+}
+
+/* --- CodeMirror theme --- */
+
+/* Base editor colors */
+.cm-editor {
+  @apply text-gray-800 dark:text-gray-300 bg-transparent;
+}
+.cm-editor .cm-content {
+  font-family: inherit;
+}
+
+/* Selection */
+.cm-editor .cm-selectionBackground,
+.cm-editor .cm-content ::selection {
+  @apply bg-blue-200 dark:bg-blue-900;
+}
+
+/* Cursor */
+.cm-editor .cm-cursor,
+.cm-editor .cm-dropCursor {
+  @apply border-l-blue-500;
+}
+
+/* Active line highlight */
+.cm-editor .cm-activeLine {
+  background-color: rgba(0, 0, 0, 0.03);
+}
+.dark .cm-editor .cm-activeLine {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+/* Gutter (line numbers) */
+.cm-editor .cm-gutters {
+  @apply bg-gray-50 dark:bg-gray-900 text-gray-400 dark:text-gray-600;
+  border-right: 1px solid #e5e7eb;
+  font-size: 0.85em;
+}
+.dark .cm-editor .cm-gutters {
+  border-right-color: #1f2937;
+}
+.cm-editor .cm-activeLineGutter {
+  @apply bg-gray-100 dark:bg-gray-800/50;
+}
+
+/* CM scrollbar */
+.cm-editor .cm-scroller::-webkit-scrollbar {
+  width: 6px;
+}
+.cm-editor .cm-scroller::-webkit-scrollbar-thumb {
   @apply bg-gray-300 dark:bg-gray-700 rounded-full;
 }
