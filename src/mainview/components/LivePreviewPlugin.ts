@@ -5,34 +5,7 @@ import {
   EditorView,
   ViewPlugin,
   ViewUpdate,
-  WidgetType,
 } from "@codemirror/view";
-
-// --- Inline-styled text widget (replaces markdown wrapper chars) ---
-
-class StyledTextWidget extends WidgetType {
-  constructor(
-    readonly text: string,
-    readonly className: string,
-  ) {
-    super();
-  }
-
-  eq(other: StyledTextWidget): boolean {
-    return this.text === other.text && this.className === other.className;
-  }
-
-  toDOM(): HTMLElement {
-    const span = document.createElement("span");
-    span.className = this.className;
-    span.textContent = this.text;
-    return span;
-  }
-
-  ignoreEvent(): boolean {
-    return true;
-  }
-}
 
 // --- Decoration builder ---
 
@@ -55,23 +28,19 @@ function buildDecorations(view: EditorView): DecorationSet {
     // --- Header: #, ##, ###, etc. ---
     const headerMatch = text.match(/^(#{1,6})\s+(.*)/);
     if (headerMatch) {
-      const level = headerMatch[1].length;
-      // Hide the "# " prefix
+      const hashLen = headerMatch[1].length;
+      // Dim the "# " prefix
       builder.add(
         line.from,
-        line.from + headerMatch[1].length + 1,
-        Decoration.replace({}),
+        line.from + hashLen + 1,
+        Decoration.mark({ attributes: { class: "cm-md-syntax" } }),
       );
       // Style the header text
-      const sizes = ["text-2xl", "text-xl", "text-lg", "text-base", "text-sm", "text-xs"];
+      const sizes = ["cm-h1", "cm-h2", "cm-h3", "cm-h4", "cm-h5", "cm-h6"];
       builder.add(
-        line.from + headerMatch[1].length + 1,
+        line.from + hashLen + 1,
         line.to,
-        Decoration.mark({
-          attributes: {
-            class: `cm-header cm-header-${level} font-bold ${sizes[level - 1]}`,
-          },
-        }),
+        Decoration.mark({ attributes: { class: `${sizes[hashLen - 1]} ${hashLen <= 3 ? "cm-bold" : ""}` } }),
       );
       continue;
     }
@@ -79,30 +48,25 @@ function buildDecorations(view: EditorView): DecorationSet {
     // --- Unordered list: - or * ---
     const ulMatch = text.match(/^(\s*)([-*])\s+(.*)/);
     if (ulMatch) {
-      const indentLen = ulMatch[1].length;
-      const bulletLen = ulMatch[2].length + 1; // "- " or "* "
-      builder.add(
-        line.from + indentLen,
-        line.from + indentLen + bulletLen,
-        Decoration.replace({
-          widget: new StyledTextWidget("\u2022", "cm-list-bullet"),
-        }),
-      );
+      const indentEnd = line.from + ulMatch[1].length;
+      const bulletStart = indentEnd;
+      const bulletEnd = bulletStart + 2; // "- " or "* "
+      // Dim the bullet prefix
+      builder.add(bulletStart, bulletEnd, Decoration.mark({ attributes: { class: "cm-md-syntax" } }));
+      // Color the bullet character itself
+      builder.add(bulletStart, bulletStart + 1, Decoration.mark({ attributes: { class: "cm-list-marker" } }));
       continue;
     }
 
     // --- Ordered list: 1. 2. etc. ---
     const olMatch = text.match(/^(\s*)(\d+)\.\s+(.*)/);
     if (olMatch) {
-      const indentLen = olMatch[1].length;
-      const num = olMatch[2];
-      const prefixLen = num.length + 2; // "1. "
+      const indentEnd = line.from + olMatch[1].length;
+      const numLen = olMatch[2].length + 2; // "1. "
       builder.add(
-        line.from + indentLen,
-        line.from + indentLen + prefixLen,
-        Decoration.replace({
-          widget: new StyledTextWidget(`${num}.`, "cm-list-number"),
-        }),
+        indentEnd,
+        indentEnd + numLen,
+        Decoration.mark({ attributes: { class: "cm-list-marker" } }),
       );
       continue;
     }
@@ -110,21 +74,19 @@ function buildDecorations(view: EditorView): DecorationSet {
     // --- Blockquote: > ---
     const bqMatch = text.match(/^>\s?(.*)/);
     if (bqMatch) {
-      // Hide the "> " prefix
+      const prefixLen = bqMatch[0].length - bqMatch[1].length;
+      // Dim the "> " prefix
       builder.add(
         line.from,
-        line.from + (bqMatch[0].length - bqMatch[1].length),
-        Decoration.replace({}),
+        line.from + prefixLen,
+        Decoration.mark({ attributes: { class: "cm-md-syntax" } }),
       );
-      // Add blockquote styling
+      // Blockquote styling on the whole line
       builder.add(
         line.from,
         line.to,
         Decoration.line({
-          attributes: {
-            class: "cm-blockquote",
-            style: "border-left: 3px solid #9ca3af; padding-left: 8px; font-style: italic; color: #6b7280;",
-          },
+          attributes: { class: "cm-blockquote" },
         }),
       );
       continue;
@@ -135,14 +97,16 @@ function buildDecorations(view: EditorView): DecorationSet {
     let codeMatch;
     while ((codeMatch = codeRegex.exec(text)) !== null) {
       const start = line.from + codeMatch.index;
-      const end = start + codeMatch[0].length;
-      builder.add(
-        start,
-        end,
-        Decoration.replace({
-          widget: new StyledTextWidget(codeMatch[1], "cm-inline-code"),
-        }),
-      );
+      const openEnd = start + 1; // backtick
+      const innerStart = openEnd;
+      const innerEnd = start + codeMatch[0].length - 1;
+      const closeStart = innerEnd;
+      const closeEnd = start + codeMatch[0].length;
+      // Dim backticks
+      builder.add(start, openEnd, Decoration.mark({ attributes: { class: "cm-md-syntax" } }));
+      builder.add(closeStart, closeEnd, Decoration.mark({ attributes: { class: "cm-md-syntax" } }));
+      // Style code content
+      builder.add(innerStart, innerEnd, Decoration.mark({ attributes: { class: "cm-inline-code" } }));
     }
 
     // --- Bold: **text** ---
@@ -150,14 +114,15 @@ function buildDecorations(view: EditorView): DecorationSet {
     let boldMatch;
     while ((boldMatch = boldRegex.exec(text)) !== null) {
       const start = line.from + boldMatch.index;
-      const end = start + boldMatch[0].length;
-      builder.add(
-        start,
-        end,
-        Decoration.replace({
-          widget: new StyledTextWidget(boldMatch[1], "cm-bold"),
-        }),
-      );
+      const openEnd = start + 2; // "**"
+      const innerStart = openEnd;
+      const innerEnd = start + boldMatch[0].length - 2;
+      const closeEnd = start + boldMatch[0].length;
+      // Dim the ** delimiters
+      builder.add(start, openEnd, Decoration.mark({ attributes: { class: "cm-md-syntax cm-bold-delim" } }));
+      builder.add(innerEnd, closeEnd, Decoration.mark({ attributes: { class: "cm-md-syntax cm-bold-delim" } }));
+      // Bold the inner text
+      builder.add(innerStart, innerEnd, Decoration.mark({ attributes: { class: "cm-bold" } }));
     }
 
     // --- Italic: *text* (but not **) ---
@@ -165,14 +130,15 @@ function buildDecorations(view: EditorView): DecorationSet {
     let italicMatch;
     while ((italicMatch = italicRegex.exec(text)) !== null) {
       const start = line.from + italicMatch.index;
-      const end = start + italicMatch[0].length;
-      builder.add(
-        start,
-        end,
-        Decoration.replace({
-          widget: new StyledTextWidget(italicMatch[1], "cm-italic"),
-        }),
-      );
+      const openEnd = start + 1; // "*"
+      const innerStart = openEnd;
+      const innerEnd = start + italicMatch[0].length - 1;
+      const closeEnd = start + italicMatch[0].length;
+      // Dim the * delimiters
+      builder.add(start, openEnd, Decoration.mark({ attributes: { class: "cm-md-syntax cm-italic-delim" } }));
+      builder.add(innerEnd, closeEnd, Decoration.mark({ attributes: { class: "cm-md-syntax cm-italic-delim" } }));
+      // Italic the inner text
+      builder.add(innerStart, innerEnd, Decoration.mark({ attributes: { class: "cm-italic" } }));
     }
   }
 
@@ -203,23 +169,47 @@ const livePreviewPlugin = ViewPlugin.fromClass(
 // --- Base theme ---
 
 const baseTheme = EditorView.baseTheme({
-  ".cm-header": { display: "block" },
-  ".cm-header-1": { fontSize: "1.5rem", fontWeight: 700 },
-  ".cm-header-2": { fontSize: "1.25rem", fontWeight: 700 },
-  ".cm-header-3": { fontSize: "1.125rem", fontWeight: 600 },
-  ".cm-list-bullet": { color: "#3b82f6", marginRight: "0.25rem" },
-  ".cm-list-number": { color: "#3b82f6", marginRight: "0.25rem" },
+  // Markdown syntax characters — dimmed
+  ".cm-md-syntax": {
+    opacity: "0.3",
+    fontWeight: "400",
+    fontStyle: "normal",
+  },
+  ".cm-bold-delim, .cm-italic-delim": {
+    fontSize: "0.85em",
+  },
+  // Headers
+  ".cm-h1": { fontSize: "1.5rem" },
+  ".cm-h2": { fontSize: "1.25rem" },
+  ".cm-h3": { fontSize: "1.125rem" },
+  ".cm-h4": { fontSize: "1rem" },
+  ".cm-h5": { fontSize: "0.95rem" },
+  ".cm-h6": { fontSize: "0.85rem" },
   ".cm-bold": { fontWeight: 700 },
+  // List markers — colored, not dimmed
+  ".cm-list-marker": {
+    color: "#3b82f6",
+    fontWeight: 600,
+  },
+  // Bold/italic
   ".cm-italic": { fontStyle: "italic" },
+  // Inline code
   ".cm-inline-code": {
     backgroundColor: "#f3f4f6",
-    padding: "0 4px",
+    padding: "0 3px",
     borderRadius: "3px",
     fontFamily: "monospace",
     fontSize: "0.9em",
   },
   ".dark .cm-inline-code": {
     backgroundColor: "#1f2937",
+  },
+  // Blockquote
+  ".cm-blockquote": {
+    borderLeft: "3px solid #9ca3af",
+    paddingLeft: "8px",
+    fontStyle: "italic",
+    color: "#6b7280",
   },
 });
 
