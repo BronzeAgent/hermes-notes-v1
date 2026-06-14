@@ -18,9 +18,23 @@ export class TaskCheckboxWidget extends WidgetType {
 
   toDOM(): HTMLElement {
     const span = document.createElement("span");
-    span.className =
-      "cursor-pointer select-none text-lg inline-block align-middle mr-1 hover:opacity-70";
-    span.textContent = this.checked ? "\u2611" : "\u2610"; // ☑ or ☐
+    span.className = [
+      "inline-flex items-center justify-center",
+      "w-5 h-5",
+      "border-2 rounded",
+      "align-middle mr-1",
+      "cursor-pointer select-none",
+      "hover:opacity-70",
+      this.checked
+        ? "bg-blue-500 border-blue-500"
+        : "border-gray-400 dark:border-gray-500",
+    ].join(" ");
+
+    if (this.checked) {
+      span.textContent = "\u2713"; // ✓
+      span.className += " text-white text-xs font-bold";
+    }
+
     span.setAttribute("aria-checked", String(this.checked));
     span.setAttribute("role", "checkbox");
     span.addEventListener("mousedown", (e) => {
