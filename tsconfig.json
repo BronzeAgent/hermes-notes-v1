@@ -14,8 +14,12 @@
 		"strict": true,
 		"noUnusedLocals": true,
 		"noUnusedParameters": true,
-		"noFallthroughCasesInSwitch": true
+		"noFallthroughCasesInSwitch": true,
+		"paths": {
+			"@/*": ["./src/mainview/*"],
+			"shared/*": ["./shared/*"]
+		}
 	},
-	"include": ["src"],
+	"include": ["src", "shared"],
 	"exclude": ["node_modules", "dist", "build", "../../package/dist"]
 }
