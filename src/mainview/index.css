@@ -15,3 +15,39 @@
 .note-list::-webkit-scrollbar-thumb {
   @apply bg-gray-300 dark:bg-gray-700 rounded-full;
 }
+
+/* CodeMirror overrides */
+.cm-editor {
+  @apply h-full bg-white dark:bg-gray-950;
+}
+.cm-editor .cm-scroller {
+  @apply font-mono text-base leading-relaxed;
+  overflow: auto !important;
+}
+.cm-editor .cm-content {
+  @apply py-4 px-5;
+  caret-color: #3b82f6;
+}
+.cm-editor .cm-gutters {
+  @apply bg-gray-50 dark:bg-gray-900 text-gray-400 dark:text-gray-600 border-r border-gray-200 dark:border-gray-800;
+}
+.cm-editor .cm-activeLineGutter {
+  @apply bg-gray-100 dark:bg-gray-800;
+}
+.cm-editor .cm-activeLine {
+  @apply bg-gray-50 dark:bg-gray-900/50;
+}
+.cm-editor .cm-cursor {
+  border-left-color: #3b82f6;
+}
+.cm-editor .cm-selectionBackground {
+  @apply bg-blue-200 dark:bg-blue-800;
+}
+
+/* Dark mode overrides */
+.dark .cm-editor .cm-content {
+  @apply text-gray-300;
+}
+.dark .cm-editor .cm-matchingBracket {
+  @apply bg-gray-700;
+}

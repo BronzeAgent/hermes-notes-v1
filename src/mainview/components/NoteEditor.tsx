@@ -1,4 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { EditorView, keymap, lineNumbers } from "@codemirror/view";
+import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
+import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
+import { livePreview } from "./LivePreviewPlugin";
 import type { Note } from "shared/rpc";
 
 type Props = {
@@ -8,25 +12,110 @@ type Props = {
   onDelete: (id: string) => void;
 };
 
+const AUTO_SAVE_MS = 500;
+
 export function NoteEditor({ note, onSave, onExport, onDelete }: Props) {
   const [title, setTitle] = useState("");
-  const [content, setContent] = useState("");
+  const editorContainerRef = useRef<HTMLDivElement>(null);
+  const viewRef = useRef<EditorView | null>(null);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const currentNoteId = useRef<string | null>(null);
 
-  // Sync local state when selected note changes
+  // Sync title when note changes
   useEffect(() => {
     setTitle(note?.title ?? "");
-    setContent(note?.content ?? "");
   }, [note?.id]);
 
-  const handleTitleChange = (value: string) => {
-    setTitle(value);
-    if (note) onSave(note.id, value, content);
-  };
+  // Create CodeMirror on mount
+  useEffect(() => {
+    if (!editorContainerRef.current) return;
 
-  const handleContentChange = (value: string) => {
-    setContent(value);
-    if (note) onSave(note.id, title, value);
-  };
+    const view = new EditorView({
+      doc: note?.content ?? "",
+      extensions: [
+        lineNumbers(),
+        markdown({ base: markdownLanguage }),
+        history(),
+        keymap.of([...defaultKeymap, ...historyKeymap]),
+        livePreview(),
+        EditorView.updateListener.of((update) => {
+          if (update.docChanged && currentNoteId.current) {
+            // Debounced auto-save
+            if (saveTimer.current) clearTimeout(saveTimer.current);
+            saveTimer.current = setTimeout(() => {
+              saveTimer.current = null;
+              if (currentNoteId.current && viewRef.current) {
+                onSave(
+                  currentNoteId.current,
+                  title,
+                  viewRef.current.state.doc.toString(),
+                );
+              }
+            }, AUTO_SAVE_MS);
+          }
+        }),
+        EditorView.theme({
+          "&": { height: "100%" },
+          ".cm-scroller": { overflow: "auto" },
+        }),
+      ],
+      parent: editorContainerRef.current,
+    });
+
+    viewRef.current = view;
+    currentNoteId.current = note?.id ?? null;
+
+    return () => {
+      // Flush pending save before destroy
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current);
+        saveTimer.current = null;
+        if (currentNoteId.current && viewRef.current) {
+          onSave(
+            currentNoteId.current,
+            title,
+            viewRef.current.state.doc.toString(),
+          );
+        }
+      }
+      view.destroy();
+      viewRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Sync editor content when a different note is selected
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view || !note) return;
+
+    if (currentNoteId.current !== note.id) {
+      // Flush pending save for previous note
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current);
+        saveTimer.current = null;
+      }
+
+      currentNoteId.current = note.id;
+      // Replace entire document
+      view.dispatch({
+        changes: {
+          from: 0,
+          to: view.state.doc.length,
+          insert: note.content,
+        },
+      });
+    }
+  }, [note?.id, note?.content]);
+
+  // Title change handler
+  const handleTitleChange = useCallback(
+    (value: string) => {
+      setTitle(value);
+      if (note) onSave(note.id, value, viewRef.current?.state.doc.toString() ?? "");
+    },
+    [note, onSave],
+  );
 
   // Empty state
   if (!note) {
@@ -62,13 +151,8 @@ export function NoteEditor({ note, onSave, onExport, onDelete }: Props) {
         </button>
       </div>
 
-      {/* Content */}
-      <textarea
-        value={content}
-        onChange={(e) => handleContentChange(e.target.value)}
-        placeholder="Start writing..."
-        className="flex-1 resize-none border-none outline-none px-5 py-4 text-base leading-relaxed bg-transparent text-gray-800 dark:text-gray-300 placeholder-gray-300 dark:placeholder-gray-600 font-[inherit]"
-      />
+      {/* CodeMirror editor */}
+      <div ref={editorContainerRef} className="flex-1 overflow-hidden" />
     </main>
   );
 }
